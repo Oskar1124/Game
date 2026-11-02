@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Līderu tabula</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Onest:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14112b;
+    --panel: #221d48;
+    --line: #38306f;
+    --text: #f3ead2;
+    --muted: #a59fc9;
+    --hot: #ff5468;
+    --gold: #ffcf4a;
+    --silver: #cfd6e6;
+    --bronze: #e39a62;
+    --me: #3ddbd9;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Onest", system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 32px 16px 64px;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1, .score-value {
+    font-family: "Press Start 2P", monospace;
+    font-weight: 400;
+  }
+  h1 { font-size: 20px; line-height: 1.5; margin: 0 0 28px; }
+
+  .score {
+    background: var(--panel);
+    border: 3px solid var(--line);
+    padding: 28px 24px;
+    margin-bottom: 32px;
+  }
+  .score-name { color: var(--muted); margin: 0 0 14px; font-size: 16px; }
+  .score-value {
+    font-size: clamp(32px, 9vw, 64px);
+    color: var(--gold);
+    margin: 0;
+    line-height: 1.2;
+    word-break: break-all;
+  }
+  .score-hint { margin: 14px 0 0; color: var(--muted); font-size: 14px; }
+
+  .board-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 12px;
+  }
+  .board-head h2 { margin: 0; font-size: 20px; }
+  button {
+    font: inherit; font-weight: 600;
+    background: var(--hot); color: #fff;
+    border: 0; padding: 10px 16px; cursor: pointer;
+  }
+  button:hover { filter: brightness(1.1); }
+  button:focus-visible, a:focus-visible { outline: 3px solid var(--me); outline-offset: 2px; }
+
+  ol.board { list-style: none; margin: 0; padding: 0; }
+  .row {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .row:nth-child(odd) { background: rgba(255,255,255,.03); }
+  .rank { font-family: "Press Start 2P", monospace; font-size: 14px; color: var(--muted); }
+  .row.r1 .rank { color: var(--gold); }
+  .row.r2 .rank { color: var(--silver); }
+  .row.r3 .rank { color: var(--bronze); }
+  .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pts { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .row.me { outline: 2px solid var(--me); outline-offset: -2px; }
+  .row.me .name::after { content: " (jūs)"; color: var(--me); }
+
+  .status { color: var(--muted); font-size: 14px; margin-top: 14px; min-height: 1.4em; }
+  .status.error { color: var(--hot); }
+
+  @media (max-width: 480px) {
+    .row { grid-template-columns: 44px 1fr auto; padding: 12px 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Līderu tabula</h1>
+
+  <section class="score" aria-live="polite">
+    <p class="score-name" id="playerName">Spēlētājs</p>
+    <p class="score-value" id="playerScore">0</p>
+    <p class="score-hint" id="playerHint"></p>
+  </section>
+
+  <section>
+    <div class="board-head">
+      <h2>Labākie spēlētāji</h2>
+      <button id="refresh" type="button">Atjaunot</button>
+    </div>
+    <ol class="board" id="board"></ol>
+    <p class="status" id="status" role="status"></p>
+  </section>
+</main>
+
+<script>
+const CONFIG = {
+  USE_DEMO: true,
+  LEADERS_URL: "http://localhost:5000/api/leaderboard",
+  PLAYER_URL:  "http://localhost:5000/api/score",
+  REFRESH_SECONDS: 15,
+  MAX_ROWS: 10
+};
+
+const DEMO = {
+  player: { name: "Oskar", score: 2450 },
+  leaders: [
+    { name: "Nova", score: 5120 },
+    { name: "Oskar", score: 2450 },
+    { name: "Kris", score: 4780 },
+    { name: "Dante", score: 3900 },
+    { name: "Mila", score: 3310 },
+    { name: "Rex", score: 1980 },
+    { name: "Lena", score: 1540 },
+    { name: "Tim", score: 990 }
+  ]
+};
+
+async function getJson(url) {
+  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+
+async function loadData() {
+  // Demo režīmā atgriežam gatavos datus bez pieprasījumiem
+  if (CONFIG.USE_DEMO) return DEMO;
+  const [player, leaders] = await Promise.all([
+    getJson(CONFIG.PLAYER_URL),
+    getJson(CONFIG.LEADERS_URL)
+  ]);
+  return { player, leaders };
+}
+
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Number(n).toLocaleString("lv-LV");
+
+function render({ player, leaders }) {
+  // Spēlētāja vārds un rezultāts
+  $("playerName").textContent = player.name;
+  $("playerScore").textContent = fmt(player.score);
+
+  const sorted = [...leaders].sort((a, b) => b.score - a.score);
+  const myIndex = sorted.findIndex((l) => l.name === player.name);
+  $("playerHint").textContent = myIndex >= 0
+    ? "Jūsu vieta rangā: " + (myIndex + 1)
+    : "Jūsu vēl nav rangā";
+
+  const board = $("board");
+  board.replaceChildren();
+  sorted.slice(0, CONFIG.MAX_ROWS).forEach((l, i) => {
+    const li = document.createElement("li");
+    li.className = "row r" + (i + 1) + (l.name === player.name ? " me" : "");
+
+    const rank = document.createElement("span");
+    rank.className = "rank";
+    rank.textContent = i + 1;
+
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = l.name;
+
+    const pts = document.createElement("span");
+    pts.className = "pts";
+    pts.textContent = fmt(l.score);
+
+    li.append(rank, name, pts);
+    board.appendChild(li);
+  });
+
+  if (!sorted.length) {
+    $("status").textContent = "Pašlaik nav rezultātu. Nospēlējiet pirmo partiju.";
+  }
+}
+
+async function refresh() {
+  const status = $("status");
+  try {
+    const data = await loadData();
+    render(data);
+    status.className = "status";
+    status.textContent = CONFIG.USE_DEMO
+      ? "Tiek rādīti demonstrācijas dati. Pievienojiet API skripta iestatījumos."
+      : "Atjaunots: " + new Date().toLocaleTimeString("lv-LV");
+  } catch (e) {
+    status.className = "status error";
+    status.textContent = "Neizdevās ielādēt datus. Pārbaudiet, vai serveris darbojas.";
+  }
+}
+
+$("refresh").addEventListener("click", refresh);
+refresh();
+setInterval(refresh, CONFIG.REFRESH_SECONDS * 1000);
+</script>
+</body>
+</html>
