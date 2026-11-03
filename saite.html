@@ -1,13 +1,21 @@
 <!DOCTYPE html>
+<!--
+  Mājaslapa "Līderu tabula" spēlei 2048 Kubi.
+  Datus ņem no FastAPI servera (api/main.py):
+    GET /scores/top              - 10 labākie rezultāti
+    GET /players/{vārds}/stats   - spēlētāja statistika
+  Faila struktūra: <style> (izskats) -> <body> (HTML) -> <script> (loģika).
+-->
 <html lang="lv">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Līderu tabula</title>
+<title>Līderu tabula — 2048 Kubi</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Onest:wght@400;600&display=swap" rel="stylesheet">
 <style>
+  /* Krāsu un fontu mainīgie */
   :root {
     --bg: #14112b;
     --panel: #221d48;
@@ -20,6 +28,7 @@
     --bronze: #e39a62;
     --me: #3ddbd9;
   }
+  /* Vispārīgie iestatījumi: rāmji tiek ieskaitīti elementa platumā */
   * { box-sizing: border-box; }
   html, body { margin: 0; }
   body {
@@ -29,19 +38,32 @@
     min-height: 100vh;
     padding: 32px 16px 64px;
   }
+  /* Saturs centrēts un ierobežots platumā */
   main { max-width: 760px; margin: 0 auto; }
+  /* Pikseļu fonts virsrakstam un lielajam rezultātam */
   h1, .score-value {
     font-family: "Press Start 2P", monospace;
     font-weight: 400;
   }
   h1 { font-size: 20px; line-height: 1.5; margin: 0 0 28px; }
 
+  /* Spēlētāja bloks */
   .score {
     background: var(--panel);
     border: 3px solid var(--line);
     padding: 28px 24px;
     margin-bottom: 32px;
   }
+  .player-form { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .player-form input {
+    flex: 1 1 160px;
+    font: inherit;
+    background: var(--bg);
+    color: var(--text);
+    border: 2px solid var(--line);
+    padding: 10px 12px;
+  }
+  .player-form input:focus-visible { outline: 3px solid var(--me); outline-offset: 2px; }
   .score-name { color: var(--muted); margin: 0 0 14px; font-size: 16px; }
   .score-value {
     font-size: clamp(32px, 9vw, 64px);
@@ -51,7 +73,11 @@
     word-break: break-all;
   }
   .score-hint { margin: 14px 0 0; color: var(--muted); font-size: 14px; }
+  .stats { display: flex; gap: 24px; margin-top: 18px; flex-wrap: wrap; }
+  .stat b { display: block; font-size: 20px; color: var(--text); }
+  .stat span { color: var(--muted); font-size: 13px; }
 
+  /* Tabulas galvene un pogas */
   .board-head {
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px; margin-bottom: 12px;
@@ -63,8 +89,9 @@
     border: 0; padding: 10px 16px; cursor: pointer;
   }
   button:hover { filter: brightness(1.1); }
-  button:focus-visible, a:focus-visible { outline: 3px solid var(--me); outline-offset: 2px; }
+  button:focus-visible { outline: 3px solid var(--me); outline-offset: 2px; }
 
+  /* Līderu saraksts */
   ol.board { list-style: none; margin: 0; padding: 0; }
   .row {
     display: grid;
@@ -84,6 +111,7 @@
   .row.me { outline: 2px solid var(--me); outline-offset: -2px; }
   .row.me .name::after { content: " (jūs)"; color: var(--me); }
 
+  /* Statusa ziņojums */
   .status { color: var(--muted); font-size: 14px; margin-top: 14px; min-height: 1.4em; }
   .status.error { color: var(--hot); }
 
@@ -95,82 +123,81 @@
 </head>
 <body>
 <main>
+  <!-- Lapas virsraksts -->
   <h1>Līderu tabula</h1>
 
+  <!-- Spēlētāja bloks: vārda ievade, labākais rezultāts un statistika -->
   <section class="score" aria-live="polite">
-    <p class="score-name" id="playerName">Spēlētājs</p>
+    <!-- Vārda ievades forma (vārds tiek saglabāts pārlūkā) -->
+    <form class="player-form" id="playerForm">
+      <input id="nameInput" type="text" maxlength="20" placeholder="Ievadiet savu vārdu" aria-label="Spēlētāja vārds" autocomplete="off">
+      <button type="submit">Rādīt</button>
+    </form>
+    <!-- Spēlētāja vārds, labākais rezultāts un paskaidrojums (aizpilda skripts) -->
+    <p class="score-name" id="playerName">Spēlētājs nav izvēlēts</p>
     <p class="score-value" id="playerScore">0</p>
-    <p class="score-hint" id="playerHint"></p>
+    <p class="score-hint" id="playerHint">Ievadiet vārdu, lai redzētu savu labāko rezultātu.</p>
+    <!-- Papildu statistika (paslēpta, kamēr nav datu) -->
+    <div class="stats" id="stats" hidden>
+      <div class="stat"><b id="statGames">0</b><span>Spēles</span></div>
+      <div class="stat"><b id="statTile">0</b><span>Lielākais kvadrāts</span></div>
+    </div>
   </section>
 
+  <!-- Līderu tabula: saraksts tiek aizpildīts ar skriptu -->
   <section>
     <div class="board-head">
       <h2>Labākie spēlētāji</h2>
       <button id="refresh" type="button">Atjaunot</button>
     </div>
+    <!-- Tabulas rindas (li) tiek pievienotas funkcijā renderBoard -->
     <ol class="board" id="board"></ol>
+    <!-- Statusa ziņojums: atjaunošanas laiks vai kļūda -->
     <p class="status" id="status" role="status"></p>
   </section>
 </main>
 
 <script>
+/* ---------- Iestatījumi ---------- */
 const CONFIG = {
-  USE_DEMO: true,
-  LEADERS_URL: "http://localhost:5000/api/leaderboard",
-  PLAYER_URL:  "http://localhost:5000/api/score",
-  REFRESH_SECONDS: 15,
-  MAX_ROWS: 10
+  // Jūsu FastAPI servera adrese (palaiž ar: uvicorn api.main:app --reload)
+  API_URL: "http://127.0.0.1:8000",
+  REFRESH_SECONDS: 15,       // automātiskās atjaunošanas intervāls sekundēs
+  STORAGE_KEY: "playerName"  // kur pārlūkā glabāt spēlētāja vārdu
 };
 
-const DEMO = {
-  player: { name: "Oskar", score: 2450 },
-  leaders: [
-    { name: "Nova", score: 5120 },
-    { name: "Oskar", score: 2450 },
-    { name: "Kris", score: 4780 },
-    { name: "Dante", score: 3900 },
-    { name: "Mila", score: 3310 },
-    { name: "Rex", score: 1980 },
-    { name: "Lena", score: 1540 },
-    { name: "Tim", score: 990 }
-  ]
-};
+/* ---------- Palīgfunkcijas ---------- */
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Number(n).toLocaleString("lv-LV");
 
-async function getJson(url) {
-  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+// Nosūta GET pieprasījumu uz API un atgriež JSON; 404 gadījumā atgriež null
+async function getJson(path) {
+  const res = await fetch(CONFIG.API_URL + path, { headers: { "Accept": "application/json" } });
+  if (res.status === 404) return null;           // spēlētājs nav atrasts
   if (!res.ok) throw new Error("HTTP " + res.status);
   return res.json();
 }
 
-async function loadData() {
-  // Demo režīmā atgriežam gatavos datus bez pieprasījumiem
-  if (CONFIG.USE_DEMO) return DEMO;
-  const [player, leaders] = await Promise.all([
-    getJson(CONFIG.PLAYER_URL),
-    getJson(CONFIG.LEADERS_URL)
-  ]);
-  return { player, leaders };
+// Nolasa pārlūkā saglabāto spēlētāja vārdu (ja ir)
+function getSavedName() {
+  try { return localStorage.getItem(CONFIG.STORAGE_KEY) || ""; }
+  catch (e) { return ""; }
 }
 
-const $ = (id) => document.getElementById(id);
-const fmt = (n) => Number(n).toLocaleString("lv-LV");
+// Saglabā spēlētāja vārdu pārlūkā, lai nebūtu jāievada katru reizi
+function saveName(name) {
+  try { localStorage.setItem(CONFIG.STORAGE_KEY, name); } catch (e) { /* nekas */ }
+}
 
-function render({ player, leaders }) {
-  // Spēlētāja vārds un rezultāts
-  $("playerName").textContent = player.name;
-  $("playerScore").textContent = fmt(player.score);
-
-  const sorted = [...leaders].sort((a, b) => b.score - a.score);
-  const myIndex = sorted.findIndex((l) => l.name === player.name);
-  $("playerHint").textContent = myIndex >= 0
-    ? "Jūsu vieta rangā: " + (myIndex + 1)
-    : "Jūsu vēl nav rangā";
-
+/* ---------- Līderu tabula (GET /scores/top) ---------- */
+function renderBoard(leaders, myName) {
   const board = $("board");
   board.replaceChildren();
-  sorted.slice(0, CONFIG.MAX_ROWS).forEach((l, i) => {
+
+  leaders.forEach((l, i) => {
     const li = document.createElement("li");
-    li.className = "row r" + (i + 1) + (l.name === player.name ? " me" : "");
+    const isMe = myName && l.name.toLowerCase() === myName.toLowerCase();
+    li.className = "row r" + (i + 1) + (isMe ? " me" : "");
 
     const rank = document.createElement("span");
     rank.className = "rank";
@@ -178,7 +205,7 @@ function render({ player, leaders }) {
 
     const name = document.createElement("span");
     name.className = "name";
-    name.textContent = l.name;
+    name.textContent = l.name;   // textContent aizsargā no HTML ievades
 
     const pts = document.createElement("span");
     pts.className = "pts";
@@ -187,28 +214,65 @@ function render({ player, leaders }) {
     li.append(rank, name, pts);
     board.appendChild(li);
   });
-
-  if (!sorted.length) {
-    $("status").textContent = "Pašlaik nav rezultātu. Nospēlējiet pirmo partiju.";
-  }
 }
 
+/* ---------- Spēlētāja statistika (GET /players/{name}/stats) ---------- */
+function renderPlayer(name, stats) {
+  if (!name) {
+    $("playerName").textContent = "Spēlētājs nav izvēlēts";
+    $("playerScore").textContent = "0";
+    $("playerHint").textContent = "Ievadiet vārdu, lai redzētu savu labāko rezultātu.";
+    $("stats").hidden = true;
+    return;
+  }
+  if (!stats) {
+    $("playerName").textContent = name;
+    $("playerScore").textContent = "0";
+    $("playerHint").textContent = "Spēlētājs nav atrasts. Nospēlējiet pirmo partiju.";
+    $("stats").hidden = true;
+    return;
+  }
+  $("playerName").textContent = stats.name;
+  $("playerScore").textContent = fmt(stats.best_score);
+  $("playerHint").textContent = "Labākais rezultāts";
+  $("statGames").textContent = fmt(stats.games);
+  $("statTile").textContent = fmt(stats.max_tile);
+  $("stats").hidden = false;
+}
+
+/* ---------- Atjaunošana ---------- */
 async function refresh() {
   const status = $("status");
+  const myName = getSavedName();
   try {
-    const data = await loadData();
-    render(data);
+    // Abus pieprasījumus veicam vienlaikus
+    const [leaders, stats] = await Promise.all([
+      getJson("/scores/top"),
+      myName ? getJson("/players/" + encodeURIComponent(myName) + "/stats") : Promise.resolve(null)
+    ]);
+
+    renderBoard(leaders || [], myName);
+    renderPlayer(myName, stats);
+
     status.className = "status";
-    status.textContent = CONFIG.USE_DEMO
-      ? "Tiek rādīti demonstrācijas dati. Pievienojiet API skripta iestatījumos."
-      : "Atjaunots: " + new Date().toLocaleTimeString("lv-LV");
+    status.textContent = (leaders && leaders.length)
+      ? "Atjaunots: " + new Date().toLocaleTimeString("lv-LV")
+      : "Pašlaik nav rezultātu. Nospēlējiet pirmo partiju.";
   } catch (e) {
     status.className = "status error";
-    status.textContent = "Neizdevās ielādēt datus. Pārbaudiet, vai serveris darbojas.";
+    status.textContent = "Neizdevās savienoties ar API (" + CONFIG.API_URL + "). Pārbaudiet, vai serveris darbojas.";
   }
 }
 
+/* ---------- Notikumi ---------- */
+$("playerForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  saveName($("nameInput").value.trim());
+  refresh();
+});
 $("refresh").addEventListener("click", refresh);
+
+$("nameInput").value = getSavedName();
 refresh();
 setInterval(refresh, CONFIG.REFRESH_SECONDS * 1000);
 </script>

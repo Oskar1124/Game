@@ -1,7 +1,61 @@
 [
     {
+        "name": "Oskars",
+        "score": 124812548,
+        "time": 2,
+        "best_tile": 2
+    },
+    {
+        "name": "Test123",
+        "score": 122313131,
+        "time": 4,
+        "best_tile": 2
+    },
+    {
+        "name": "Es",
+        "score": 1232131,
+        "time": 1,
+        "best_tile": 2
+    },
+    {
+        "name": "Test123",
+        "score": 123131,
+        "time": 2,
+        "best_tile": 2
+    },
+    {
+        "name": "Oskars",
+        "score": 5000,
+        "time": 6,
+        "best_tile": 2
+    },
+    {
         "score": 2812,
         "time": 41,
         "best_tile": 256
+    },
+    {
+        "name": "Oskars",
+        "score": 2532,
+        "time": 41,
+        "best_tile": 256
+    },
+    {
+        "name": "Oskars",
+        "score": 1576,
+        "time": 25,
+        "best_tile": 128
+    },
+    {
+        "name": "Oskars",
+        "score": 1352,
+        "time": 26,
+        "best_tile": 128
+    },
+    {
+        "name": "Es",
+        "score": 1234,
+        "time": 3,
+        "best_tile": 2
     }
 ]
